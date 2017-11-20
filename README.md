@@ -26,6 +26,10 @@ This will generate two files in the project root:
 When you add files, you need to reinitialize. It is a good idea to add it to a Bazel
 event listener or as part of your build.
 
+
+__NOTE:__ gtest (and other external deps) includes will not work until bazel has fetched the sources.
+
+
 gtest
 -----
 
