@@ -1,0 +1,11 @@
+--- tools/ycm/.bazel_ycm/aspects.bzl	2017-10-09 00:52:12.000000000 -0500
++++ aspects.bzl	2017-11-19 21:11:07.000000000 -0600
+@@ -90,7 +90,7 @@
+     compile_command = compiler + " " + " ".join(compile_flags) + force_cpp_mode_option
+ 
+     for src in srcs:
+-        command_for_file = compile_command + " -c " + src.path
++        command_for_file = compile_command
+ 
+         exec_root_marker = "__EXEC_ROOT__"
+         compilation_db.append(

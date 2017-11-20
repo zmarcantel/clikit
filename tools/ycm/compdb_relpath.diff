@@ -1,0 +1,12 @@
+--- tools/.bazel_ycm/generate.sh    2017-10-09 05:52:12.000000000 +0000
++++ generate.sh    2017-11-17 18:43:00.940015142 +0000
+@@ -22,7 +22,8 @@
+
+ set -e
+
+-readonly ASPECTS_DIR="$(dirname "$0")"
++readonly ASPECTS_ABSDIR="$(dirname "$0")"
++readonly ASPECTS_DIR="$(realpath --relative-to="$(pwd)" "$ASPECTS_ABSDIR")"
+ readonly ASPECTS_FILE="${ASPECTS_DIR/#.\/}/aspects.bzl"
+ readonly OUTPUT_GROUPS="compdb_files"
+

@@ -1,0 +1,5 @@
+bazel-*
+
+.ycm_db
+.ycm_extra_conf.pyc
+compile_commands.json

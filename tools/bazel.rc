@@ -1,0 +1,14 @@
+# use clang
+# build --client_env=CC=clang
+
+# c++14
+build --cxxopt="-std=c++14"
+
+# colorful output of GCC
+build --cxxopt="-fdiagnostics-color=always"
+
+# all warnings are errors
+build --cxxopt="-Wall"
+build --cxxopt="-Werror"
+# except unused functions
+build --cxxopt="-Wno-unused-function"
