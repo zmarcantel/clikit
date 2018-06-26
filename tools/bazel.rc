@@ -1,7 +1,3 @@
-# use clang
-# build --client_env=CC=clang
-
-# c++14
 build --cxxopt="-std=c++14"
 
 # colorful output of GCC
