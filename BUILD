@@ -1,12 +1,6 @@
 alias(
-    name = "bin",
-    actual = "//src/bin:bin",
-    visibility = ["//visibility:public"],
-)
-
-alias(
     name = "lib",
-    actual = "//src/lib:lib",
+    actual = "//src:lib",
     visibility = ["//visibility:public"],
 )
 

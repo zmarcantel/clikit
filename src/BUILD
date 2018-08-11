@@ -1,14 +1,14 @@
 alias(
     name = "lib",
-    actual = ":foo",
+    actual = ":clikit",
     visibility = ["//visibility:public"],
 )
 
 cc_library(
-    name = "foo",
-    srcs = glob(["**/*.cpp"]),
+    name = "clikit",
+    srcs = ["clikit.hpp"],
     hdrs = [
-        "lib.hpp",
+        "clikit.hpp",
     ],
     deps = [
     ],

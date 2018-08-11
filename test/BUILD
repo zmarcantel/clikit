@@ -1,15 +1,15 @@
 alias(
     name = "all",
-    actual = ":foo_test",
+    actual = ":clikit_test",
     visibility = ["//visibility:public"],
 )
 
 cc_test(
-    name = "foo_test",
-    srcs = glob(["**/*.cpp"]),
+    name = "clikit_test",
+    srcs = glob(["**/*.cpp", "**/*.hpp"]),
     deps = [
         "@googletest//:gtest_main",
-        "//src/lib:lib",
+        "//src:lib",
     ],
     visibility = ["//visibility:public"],
 )
