@@ -9,3 +9,9 @@ alias(
     actual = "//test:all",
     visibility = ["//visibility:public"],
 )
+
+alias(
+    name = "simple_example",
+    actual = "//examples/simple:simple",
+    visibility = ["//visibility:public"],
+)

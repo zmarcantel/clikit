@@ -4,6 +4,51 @@
 #include "gtest/gtest.h"
 #include "src/clikit.hpp"
 
+
+TEST(Subcommand, Ordering) {
+    const char* argv[] = {"hello", "-f", "build", "test"};
+    std::size_t argc = sizeof(argv) / sizeof(argv[0]);
+
+    std::string subcommand;
+    std::vector<std::string> files;
+
+    cli::Parser parse(argc, argv);
+    try {
+        parse.subcommand("build", "test subcommand", subcommand)
+                .done()
+            .subcommand("test", "test", subcommand)
+                .done()
+            .list('f', "file", files)
+        ;
+
+        EXPECT_FALSE(true) << "did not throw parse error for misordered args";
+    } catch (const cli::ParseError& err) {
+        // god job
+    }
+}
+
+TEST(Subcommand, Scoping) {
+    const char* argv[] = {"hello", "-f", "build.c", "test"};
+    std::size_t argc = sizeof(argv) / sizeof(argv[0]);
+
+    std::string subcommand;
+    std::vector<std::string> files;
+
+    cli::Parser parse(argc, argv);
+    try {
+        parse.subcommand("build", "test subcommand", subcommand)
+                .list('f', "file", files)
+                .done()
+            .subcommand("test", "test", subcommand)
+                .done()
+        ;
+
+        EXPECT_FALSE(true) << "did not throw parse error for misordered args";
+    } catch (const cli::ParseError& err) {
+        // god job
+    }
+}
+
 TEST(Subcommand, NoIntermediateWithTrailingGlobal) {
     const char* argv[] = {"hello", "build", "-n", "123", "-n=456", "-n=098"};
     std::size_t argc = sizeof(argv) / sizeof(argv[0]);

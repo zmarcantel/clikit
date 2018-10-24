@@ -317,8 +317,8 @@ public:
 
 inline bool is_valid_short(char c) {
     return ((c >= '0' and c <= '9'))
-        or ((c >= 'a') or (c <= 'z'))
-        or ((c >= 'A') or (c <= 'Z'));
+        or ((c >= 'a') and (c <= 'z'))
+        or ((c >= 'A') and (c <= 'Z'));
 }
 
 std::string arg_string(char s, const char* l) {
@@ -327,10 +327,12 @@ std::string arg_string(char s, const char* l) {
 
     if (valid_short) {
         ss << "-" << s;
+    } else {
+        ss << "  ";
     }
 
     if (l != nullptr) {
-        if (valid_short) { ss << "/"; }
+        if (valid_short) { ss << "/"; } else { ss << " "; }
         ss << "--" << l;
     }
 
@@ -415,24 +417,223 @@ auto Emplace(Into& into, const char* arg)
 //-------------------------------------------------------------------------
 
 struct Description {
-    std::string name;
-    std::string short_desc;
-    std::string long_desc;
+    const char* name = nullptr;
+    std::size_t name_len = 0;
+
+    const char* short_desc = nullptr;
+    std::size_t short_len = 0;
+
+    const char* long_desc = nullptr;
+    std::size_t long_len = 0;
 
     Description() = default; // TODO: maybe not
-    Description(std::string n, std::string s)
-        : name(std::move(n)), short_desc(std::move(s))
+    Description(
+        const char* n, std::size_t n_len,
+        const char* s, std::size_t s_len,
+        const char* l, std::size_t l_len
+    )
+        : name(n), name_len(n_len)
+        , short_desc(s), short_len(s_len)
+        , long_desc(l), long_len(s_len)
     {}
+    Description(const char* n, const char* s, const char* l)
+        // TODO: strnlen -- set a MEX_LENGTH variable? #define?
+    {
+        if (n == nullptr) { n = ""; }
+        if (s == nullptr) { s = ""; }
+        if (l == nullptr) { l = ""; }
+
+        name = n;
+        name_len = strlen(n);
+
+        short_desc = s;
+        short_len = strlen(s);
+
+        long_desc = l;
+        long_len = strlen(l);
+    }
 };
 
-struct ArgDesc {
-    char s;
-    std::string l;
+struct ArgHelp {
+    std::string flags;
+    const char* arg_name; // i.e.   -f/--file FILE
+    std::size_t name_len = 0;
+    const char* desc;
+    std::size_t desc_len = 0;
+
+    ArgHelp(
+        std::string flags,
+        const char* name=nullptr,
+        const char* desc=nullptr
+    )
+        : flags(std::move(flags))
+        , arg_name(name)
+        , desc(desc)
+    {
+        // TODO: stnlen -- but need a mex length variable of some sort
+        if (name != nullptr) { name_len = strlen(name); } else { name = ""; }
+        if (desc != nullptr) { desc_len = strlen(desc); } else { desc = ""; }
+    }
+
+    ArgHelp(
+        char s, const char* l,
+        const char* name=nullptr,
+        const char* desc=nullptr
+    ) : ArgHelp(arg_string(s, l), name, desc) {}
+
+    std::size_t left_col_width() const {
+        return flags.size() + name_len + 1; // 1 for the space between arg and name
+    }
 };
 
-struct Argument {
-    ArgDesc _desc;
-    Argument(char s, std::string l) : _desc({s, std::move(l)}) {}
+class HelpMap {
+public:
+    using GroupValue = std::pair<Description, std::vector<ArgHelp>>;
+
+    Description _desc;
+    std::vector<Description> _subs;
+    std::vector<GroupValue> _groups;
+    std::vector<ArgHelp> _args;
+
+    Description _app_desc;
+    const char* _app_version;
+
+    std::size_t _longest_flag;
+    std::size_t _indent_width;
+
+protected:
+    void indent_stream(std::ostream& s, std::size_t indent) const {
+        for (std::size_t i = 0; i < indent; i++) {
+            s << " ";
+        }
+    }
+
+public:
+    HelpMap()
+        : _app_version(nullptr)
+        , _longest_flag(0)
+        , _indent_width(4)
+    {}
+    HelpMap(const char* name, const char* short_desc)
+        : _desc(name, short_desc, "")
+        , _app_version(nullptr)
+        , _longest_flag(0)
+        , _indent_width(4)
+    {}
+
+    void details(const char* name, const char* desc, const char* long_desc="") {
+        _desc = Description(name, desc, long_desc);
+    }
+
+    template <typename... Args>
+    void add_arg(bool in_group, const Args ...h) {
+        if (in_group) {
+            _groups.back().second.emplace_back(h...);
+
+            auto added = _groups.back().second.back();
+            _longest_flag = std::max(
+                _longest_flag,
+                _indent_width + added.left_col_width() // extra indent
+            );
+        } else {
+            _args.emplace_back(h...);
+            _longest_flag = std::max(
+                _longest_flag,
+                _args.back().left_col_width()
+            );
+        }
+    }
+
+    void clear_subcommands() {
+        _subs.clear();
+    }
+    void add_subcommand(const char* name, const char* desc) {
+        _subs.emplace_back(name, desc, "");
+        _longest_flag = std::max(_longest_flag, _subs.back().name_len + _indent_width);
+    }
+
+    void new_group(const char* name, const char* desc) {
+        std::vector<ArgHelp> vec;
+        _groups.emplace_back(Description(name, desc, ""), vec);
+    }
+
+    void print(std::ostream& s) const {
+        auto right_col_start =  _indent_width + _longest_flag + _indent_width;
+
+        // app leading line
+        if (_app_desc.name_len) {
+            s << _app_desc.name;
+            if (_app_version) {
+                s << " " << _app_version;
+            }
+            if (_app_desc.short_len) {
+                s << " - " << _app_desc.short_desc;
+            }
+            s << std::endl << std::endl;
+        }
+
+
+        // command leading line
+        if (_desc.name_len) {
+            s << _desc.name;
+            if (_desc.short_len) {
+                s << ": " << _desc.short_desc;
+            }
+            if (_desc.name_len or _desc.short_len) {
+                s << std::endl;
+            }
+            s << std::endl;
+        }
+
+
+        // long description
+        if (_desc.long_len) {
+            s << _desc.long_desc << std::endl << std::endl;
+        }
+
+        // subcommands
+        if (_subs.size()) {
+            s << "subcommands:" << std::endl;
+            for (auto& sub : _subs) {
+                indent_stream(s, _indent_width);
+                s << sub.name;
+                indent_stream(s, right_col_start - _indent_width - sub.name_len);
+                s << sub.short_desc << std::endl;
+            }
+            s << std::endl << std::endl;
+        }
+
+        // groups
+        if (_groups.size()) {
+            for (auto& g : _groups) {
+                s << g.first.name << ": ";
+                indent_stream(s, right_col_start - g.first.name_len - 2);
+                s << g.first.short_desc << std::endl;
+                for (auto& a : g.second) {
+                    indent_stream(s, _indent_width);
+                    s << a.flags << " " << a.arg_name;
+                    indent_stream(s, right_col_start - _indent_width - a.left_col_width());
+                    s << a.desc << std::endl;
+                }
+            }
+            s << std::endl;
+        }
+
+        // args
+        if (_args.size()) {
+            s << "options:" << std::endl;
+            for (auto& a : _args) {
+                indent_stream(s, _indent_width);
+                s << a.flags << " " << a.arg_name;
+                indent_stream(s, right_col_start - a.left_col_width());
+                s << a.desc << std::endl;
+            }
+            s << std::endl;
+        }
+
+        // pretty spacing
+        s << std::endl;
+    }
 };
 
 
@@ -515,6 +716,7 @@ protected:
     const char** _argv;
 
     std::size_t _level;
+    bool _help;
 
 public:
     class iterator {
@@ -579,15 +781,26 @@ public:
 
 public:
     Context() = delete;
-    Context(std::size_t argc, const char** argv)
+    Context(std::size_t argc, const char** argv, char help_short='h', const char* help_long="help")
         : _argset(argc)
         , _argc(argc)
         , _argv(argv)
         , _level(0)
+        , _help(false)
     {
         _argdesc.reserve(argc);
         for (std::size_t i = 0; i < argc; i++) {
             _argdesc.emplace_back(argv[i]);
+
+            if (not _argdesc.back().is_positional()) {
+                if (
+                    _argdesc.back().matches(_argv[i], help_short)
+                    or _argdesc.back().matches(_argv[i], help_long)
+                ) {
+                    _help = true;
+                    _argset.set(i);
+                }
+            }
         }
     }
 
@@ -600,6 +813,10 @@ public:
 
     void used(std::size_t i) {
         _argset.set(i);
+    }
+
+    std::size_t remaining() const {
+        return _argset.remaining();
     }
 
     // returns nullptr if there are no more args to take
@@ -622,25 +839,98 @@ public:
     std::size_t level() const {
         return _level;
     }
+
+    bool wants_help() const {
+        return _help;
+    }
 };
 
 
 class Parser {
 protected:
     Context _ctx;
+
+    bool _in_group;
     std::size_t _level;
+
+    std::unique_ptr<HelpMap> _help;
 
 public:
     Parser() = default;
-    Parser(std::size_t argc, const char** argv)
-        : _ctx(argc, argv)
+    Parser(
+        std::size_t argc, const char** argv,
+        char help_short='h', const char* help_long="help"
+    )
+        : _ctx(argc-1, argv+1, help_short, help_long)
+        , _in_group(false)
         , _level(0)
     {
+        if (_ctx.wants_help()) {
+            _help = std::unique_ptr<HelpMap>(new HelpMap());
+        }
     }
 
-    Parser& done() {
-        if (_level > 0) {
-            _level--;
+    inline Parser& done() {
+        // handle groups first
+        if (_in_group) {
+            _in_group = false;
+            return *this;
+        }
+
+        if (_level == 0) {
+            throw InternalError("cannot call done() on top-level parser");
+        }
+
+        _level--;
+        return *this;
+    }
+
+    inline bool wants_help() const {
+        return _ctx.wants_help();
+    }
+
+    void print() const {
+        if (not _ctx.wants_help()) {
+            return;
+        }
+
+        _help->print(std::cout);
+    }
+
+    // finalizer that asserts no unused arguments
+    void validate() {
+        if (_ctx.remaining()) {
+            auto arg = *_ctx.begin();
+            std::stringstream ss;
+            ss << "unknown argument '" << arg.c_str << "'";
+            throw ParseError(ss.str());
+        }
+    }
+
+
+    //---------------------------------------------------------------------
+    // help setup
+    //---------------------------------------------------------------------
+
+    Parser& details(const char* name, const char* desc, const char* long_desc="") {
+        if (_ctx.wants_help()) {
+            _help->_app_desc = Description(name, desc, long_desc);
+        }
+
+        return *this;
+    }
+
+    Parser& version(const char* v) {
+        if (_ctx.wants_help()) {
+            _help->_app_version = v;
+        }
+
+        return *this;
+    }
+
+    Parser& indent_width(std::uint8_t w) {
+        if (_ctx.wants_help()) {
+            _help->_indent_width = w;
         }
         return *this;
     }
@@ -652,6 +942,11 @@ public:
     // TODO: take T&& to move value?
     Parser& flag(char s, const char* l, const char* desc, bool& into, bool invert=false) {
         if (_level != _ctx.level()) {
+            return *this;
+        }
+
+        if (wants_help()) {
+            _help->add_arg(_in_group, s, l, "", desc);
             return *this;
         }
 
@@ -694,6 +989,11 @@ public:
             return *this;
         }
 
+        if (wants_help()) {
+            _help->add_arg(_in_group, s, l, "", desc);
+            return *this;
+        }
+
         for (auto& arg : _ctx) {
             if (arg.desc.is_positional()) { continue; }
 
@@ -729,8 +1029,13 @@ public:
 
     // TODO: take T&& to move value?
     template <typename T>
-    Parser& arg(char s, const char* l, const char* desc, T& into) {
+    Parser& arg(char s, const char* l, const char* desc, T& into, const char* arg_desc=nullptr) {
         if (_level != _ctx.level()) {
+            return *this;
+        }
+
+        if (wants_help()) {
+            _help->add_arg(_in_group, s, l, arg_desc, desc);
             return *this;
         }
 
@@ -794,8 +1099,13 @@ public:
 
     // TODO: take T&& to move value?
     template <typename T>
-    Parser& list(char s, const char* l, const char* desc, T& into) {
+    Parser& list(char s, const char* l, const char* desc, T& into, const char* arg_desc=nullptr) {
         if (_level != _ctx.level()) {
+            return *this;
+        }
+
+        if (wants_help()) {
+            _help->add_arg(_in_group, s, l, arg_desc, desc);
             return *this;
         }
 
@@ -851,25 +1161,48 @@ public:
     auto subcommand(const char* name, const char* desc, T& into)
     -> typename std::enable_if<std::is_constructible<T, const char*>::value, Parser&>::type
     {
-        if (_level != _ctx.level()) {
-            return *this;
-        }
-
         // if we are entering this block, everything until the done() call
         // is in the next level. so incr and wait for decr
         _level++;
 
-        auto arg_len = strlen(name);
-        for (auto& arg : _ctx) {
-            if (not arg.desc.is_positional()) { continue; }
-            if (arg.desc.len != arg_len) { continue; }
+        if (_level != (_ctx.level() + 1)) {
+            return *this;
+        }
 
-            if (strncmp(name, arg.c_str, arg_len) == 0) {
-                into = T(arg.c_str);
-                _ctx.used(arg.index);
-                _ctx.next_level();
-                break;
+        // if we're same level but there are no args, add ourself and return
+        if (wants_help() and not _ctx.remaining()) {
+            _help->add_subcommand(name, desc);
+            return *this;
+        }
+
+        auto arg_len = strlen(name);
+
+        // subcommands only operate on the first available arg
+        // so we can just use the iterator
+        auto arg = *_ctx.begin();
+        if (not arg.desc.is_positional()) {
+            std::stringstream ss;
+            ss << "argument '" << arg.c_str << "' not available at this (sub)command";
+            throw ParseError(ss.str());
+        }
+        if (arg.desc.len != arg_len) { return *this; }
+
+        if (strncmp(name, arg.c_str, arg_len) == 0) {
+            into = T(arg.c_str);
+            _ctx.used(arg.index);
+            _ctx.next_level();
+
+            if (wants_help()) {
+                // just reset the name... aggregate all options available
+                // to the given subcommand
+                _help->details(name, desc);
+                // but clear the subcommands as they do not cross levels
+                //_help.clear_subcommands();
             }
+        }
+        else if (wants_help()) {
+            // if we dont change levels and have help arg, add ourselves as a subcommand
+            _help->add_subcommand(name, desc);
         }
 
         return *this;
@@ -892,6 +1225,75 @@ public:
         this->subcommand(name, desc, test);
         into = (test != nullptr);
         return *this;
+    }
+
+
+    //---------------------------------------------------------------------
+    // group
+    //---------------------------------------------------------------------
+
+    Parser& group(const char* name, const char* desc) {
+        // groups do nothing when not printing help
+        if (not _ctx.wants_help()) {
+            return *this;
+        }
+
+        if (_in_group) {
+            throw InternalError("nested groups are not allowed");
+        }
+
+        _in_group = true;
+        _help->new_group(name, desc);
+        return *this;
+    }
+
+
+    //---------------------------------------------------------------------
+    // positionals
+    //---------------------------------------------------------------------
+
+    template <typename T>
+    Parser& positional(const char* name, const char* desc, T& into) {
+        if (_level != _ctx.level()) {
+            return *this;
+        }
+
+        if (wants_help()) {
+            _help->add_arg(_in_group, std::string(name), "", desc);
+            return *this;
+        }
+
+        // like subcommands, we  only operate on the first available arg
+        // so we can just use the iterator and assert it is positional
+        auto arg = *_ctx.begin();
+        if (not arg.desc.is_positional()) {
+            std::stringstream ss;
+            ss << "argument '" << arg.c_str << "' not available at this (sub)command";
+            throw ParseError(ss.str());
+        }
+
+        into = T(arg.c_str);
+        _ctx.used(arg.index);
+        return *this;
+    }
+
+    // return void to terminate the chain
+    // does the same as Parser::validate() where an exception is thrown when
+    // not all arguments were consumed.
+    template <typename T>
+    void all_positionals(const char* name, const char* desc, T& into) {
+        // becuase this is a finalizeer, we do not consider level
+
+        for (auto& a : _ctx) {
+            if (not a.desc.is_positional()) {
+                std::stringstream ss;
+                ss << "unknown argument '" << a.c_str << "'";
+                throw ParseError(ss.str());
+            }
+
+            _ctx.used(a.index);
+            Emplace(into, a.c_str);
+        }
     }
 };
 
