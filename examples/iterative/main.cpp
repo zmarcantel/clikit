@@ -119,10 +119,6 @@ void be_dynamic(cli::Parser& args, Options& opts) {
     if (opts.trickery != new_number) {
         throw std::runtime_error("reset the trickery number");
     }
-
-    for (auto& i : opts.dynamic_values) {
-        std::cout << i.first << ": " << i.second << std::endl;
-    }
 }
 
 int main(int argc, const char** argv) {
@@ -145,6 +141,10 @@ int main(int argc, const char** argv) {
     } catch (const cli::MissingArgumentError& err) {
         std::cerr << err.what() << std::endl;
         return 1;
+    }
+
+    for (auto& i : opts.dynamic_values) {
+        std::cout << i.first << ": " << i.second << std::endl;
     }
 
     return 0;
