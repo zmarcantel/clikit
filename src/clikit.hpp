@@ -825,7 +825,7 @@ public:
         }
 
         // positionals
-        if (_args.size()) {
+        if (_pos.size()) {
             s << "positionals:" << std::endl;
             for (auto& p : _pos) {
                 indent_stream(s, _indent_width);
