@@ -2,7 +2,7 @@ cc_binary(
     name = "simple",
     srcs = ["main.cpp"],
     deps = [
-        "//src:lib",
+        "//src:clikit",
     ],
     visibility = ["//visibility:public"],
 )

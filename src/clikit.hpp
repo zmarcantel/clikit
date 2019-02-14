@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <cstring>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
@@ -279,6 +281,37 @@ public:
 }; // end of BitSet
 
 
+//-------------------------------------------------------------------------
+// generic helper functions
+//-------------------------------------------------------------------------
+
+inline bool is_valid_short(char c) {
+    return ((c >= '0' and c <= '9'))
+        or ((c >= 'a') and (c <= 'z'))
+        or ((c >= 'A') and (c <= 'Z'));
+}
+
+void arg_string(std::ostream& ss, char s, const char* l, bool pad = true) {
+    bool valid_short = is_valid_short(s);
+
+    if (valid_short) {
+        ss << "-" << s;
+    } else if (pad) {
+        ss << "  ";
+    }
+
+    if (l != nullptr) {
+        if (valid_short) { ss << "/"; } else if (pad) { ss << " "; }
+        ss << "--" << l;
+    }
+}
+std::string arg_string(char s, const char* l, bool pad = true) {
+    std::stringstream ss;
+    arg_string(ss, s, l, pad);
+    return ss.str();
+}
+
+
 
 //-------------------------------------------------------------------------
 // errors
@@ -293,7 +326,7 @@ public:
     ParseError(const char* e) : err(e) {}
     ParseError(std::string e) : err(std::move(e)) {}
 
-    const char * what () const throw () { return err.c_str(); }
+    const char* what() const throw () { return err.c_str(); }
 };
 
 // Error type thrown when internal state or CLI building
@@ -310,35 +343,21 @@ public:
     const char * what () const throw () { return err.c_str(); }
 };
 
+// Error type thrown when required argument not given
+class MissingArgumentError : public std::exception {
+protected:
+    std::string err;
 
-//-------------------------------------------------------------------------
-// generic helper functions
-//-------------------------------------------------------------------------
-
-inline bool is_valid_short(char c) {
-    return ((c >= '0' and c <= '9'))
-        or ((c >= 'a') and (c <= 'z'))
-        or ((c >= 'A') and (c <= 'Z'));
-}
-
-std::string arg_string(char s, const char* l) {
-    std::stringstream ss;
-    bool valid_short = is_valid_short(s);
-
-    if (valid_short) {
-        ss << "-" << s;
-    } else {
-        ss << "  ";
+public:
+    MissingArgumentError(char short_name, const char* long_name) {
+        std::stringstream ss;
+        ss << "missing argument: ";
+        arg_string(ss, short_name, long_name, false);
+        err = ss.str();
     }
 
-    if (l != nullptr) {
-        if (valid_short) { ss << "/"; } else { ss << " "; }
-        ss << "--" << l;
-    }
-
-    return ss.str();
-}
-
+    const char* what() const throw () { return err.c_str(); }
+};
 
 
 //-------------------------------------------------------------------------
@@ -356,18 +375,6 @@ template<> std::uint8_t From<std::uint8_t>(const char* s) { return   std::stoul(
 template<> std::uint16_t From<std::uint16_t>(const char* s) { return std::stoul(s); }
 template<> std::uint32_t From<std::uint32_t>(const char* s) { return std::stoul(s); }
 template<> std::uint64_t From<std::uint64_t>(const char* s) { return std::stoull(s); }
-template<> std::size_t From<std::size_t>(const char* s) {
-    switch (sizeof(std::size_t)) {
-    case 1:
-        return From<std::uint8_t>(s);
-    case 2:
-        return From<std::uint16_t>(s);
-    case 4:
-        return From<std::uint32_t>(s);
-    case 8:
-        return From<std::uint64_t>(s);
-    }
-}
 
 
 // signed
@@ -413,6 +420,16 @@ auto Emplace(Into& into, const char* arg)
 
 
 //-------------------------------------------------------------------------
+// shared / fwdecls / enums
+//-------------------------------------------------------------------------
+
+enum class ArgReq : std::uint8_t {
+    Optional = 0,
+    Required
+};
+
+
+//-------------------------------------------------------------------------
 // help / printing descriptors
 //-------------------------------------------------------------------------
 
@@ -455,18 +472,22 @@ struct Description {
 };
 
 struct ArgHelp {
-    std::string flags;
+    char short_flag;
+    const char* long_flag;
+
     const char* arg_name; // i.e.   -f/--file FILE
     std::size_t name_len = 0;
     const char* desc;
     std::size_t desc_len = 0;
+    ArgReq _require;
 
     ArgHelp(
-        std::string flags,
+        char s, const char* l,
         const char* name=nullptr,
         const char* desc=nullptr
     )
-        : flags(std::move(flags))
+        : short_flag(s)
+        , long_flag(l)
         , arg_name(name)
         , desc(desc)
     {
@@ -475,36 +496,190 @@ struct ArgHelp {
         if (desc != nullptr) { desc_len = strlen(desc); } else { desc = ""; }
     }
 
-    ArgHelp(
-        char s, const char* l,
-        const char* name=nullptr,
-        const char* desc=nullptr
-    ) : ArgHelp(arg_string(s, l), name, desc) {}
+    std::size_t left_col_width() const {
+        // TODO: get count without creating the string
+        // 1 for the space between arg and name
+        return arg_string(short_flag, long_flag).size() + name_len + 1;
+    }
+
+    std::string flags_string() const {
+        return arg_string(short_flag, long_flag);
+    }
+
+    bool required() const {
+        return _require == ArgReq::Required;
+    }
+};
+
+struct PositionalHelp {
+    const char* name; // i.e.   -f/--file FILE
+    std::size_t name_len = 0;
+    const char* desc;
+    std::size_t desc_len = 0;
+    bool _is_variadic = false;
+
+    PositionalHelp(const char* name, const char* desc=nullptr)
+        : name(name)
+        , desc(desc)
+        , _is_variadic(false)
+    {
+        // TODO: strnlen -- but need a max length variable of some sort
+        if (name != nullptr) { name_len = strlen(name); } else { name = ""; }
+        if (desc != nullptr) { desc_len = strlen(desc); } else { desc = ""; }
+    }
+
+    PositionalHelp(bool variadic, const char* name, const char* desc=nullptr)
+        : PositionalHelp(name, desc)
+    {
+        _is_variadic = variadic;
+    }
 
     std::size_t left_col_width() const {
-        return flags.size() + name_len + 1; // 1 for the space between arg and name
+        // 1 for the space between arg and name
+        // 3 for the '...' in variadics
+        return name_len + 1 + (variadic() ? 3 : 0);
     }
+
+    bool variadic() const { return _is_variadic; }
 };
 
 class HelpMap {
 public:
     using GroupValue = std::pair<Description, std::vector<ArgHelp>>;
 
-    Description _desc;
     std::vector<Description> _subs;
     std::vector<GroupValue> _groups;
     std::vector<ArgHelp> _args;
+    std::vector<PositionalHelp> _pos;
 
-    Description _app_desc;
+    Description _desc;
     const char* _app_version;
 
     std::size_t _longest_flag;
     std::size_t _indent_width;
 
 protected:
-    void indent_stream(std::ostream& s, std::size_t indent) const {
+
+    static void indent_stream(std::ostream& s, std::size_t indent) {
         for (std::size_t i = 0; i < indent; i++) {
             s << " ";
+        }
+    }
+
+    // returns whether there are an args registered (including in groups)
+    // but subcommands do not count as they are not args
+    bool has_args() const {
+        if (not _args.empty()) { return true; }
+        if (not _pos.empty()) { return true; }
+
+        for (auto& g : _groups) {
+            if (not g.second.empty()) { return true; }
+        }
+
+        return false;
+    }
+
+    static std::string combine_all_shorts(const std::vector<const ArgHelp*> args) {
+        std::stringstream ss;
+        for (auto& a : args) {
+            if (is_valid_short(a->short_flag)) {
+                ss << a->short_flag;
+            }
+        }
+        return ss.str();
+    }
+
+    static std::string combine_all_nonshorts(const std::vector<const ArgHelp*> args) {
+        std::stringstream ss;
+        for (auto& a : args) {
+            if (is_valid_short(a->short_flag)) {
+                continue;
+            }
+
+            if (ss.tellp()) {
+                ss << " ";
+            }
+
+            ss << "--" << a->long_flag;
+        }
+        return ss.str();
+    }
+
+    void print_usage_args(std::ostream& ss) const {
+        std::vector<const ArgHelp*> required;
+        std::vector<const ArgHelp*> optional;
+
+        // sort into required and not
+        for (auto& g : _groups) {
+            for (auto& a : g.second) {
+                if (a.required()) {
+                    required.emplace_back(&a);
+                } else {
+                    optional.emplace_back(&a);
+                }
+            }
+        }
+        for (auto& a : _args) {
+            if (a.required()) {
+                required.emplace_back(&a);
+            } else {
+                optional.emplace_back(&a);
+            }
+        }
+
+        // generate strings for each class
+        // TODO: this is gross... but the code to do it ad-hoc is even grosser imho
+        auto short_requireds = combine_all_shorts(required);
+        auto long_requireds = combine_all_nonshorts(required);
+
+        auto short_optionals = combine_all_shorts(optional);
+        auto long_optionals = combine_all_nonshorts(optional);
+
+        // print things to the stream
+
+        if (not short_requireds.empty()) {
+            ss << "-" << short_requireds;
+        }
+        if (not long_requireds.empty()) {
+            if (not short_requireds.empty()) {
+                ss << " ";
+            }
+            ss << long_requireds;
+        }
+
+        if (not optional.empty()) {
+            // do we need to separate from required's output
+            if (not required.empty()) {
+                ss << " ";
+            }
+            ss << "[";
+        }
+
+        if (not short_optionals.empty()) {
+            ss << "-" << short_optionals;
+        }
+        if (not long_optionals.empty()) {
+            if (not short_optionals.empty()) {
+                ss << " ";
+            }
+            ss << long_optionals;
+        }
+
+        // close the bracket
+        if (not optional.empty()) {
+            ss << "]";
+        }
+
+        // print positionals
+        if (not required.empty() or not optional.empty()) {
+            ss << " ";
+        }
+        std::size_t pos_idx = 0;
+        for (auto& p : _pos) {
+            if (pos_idx) { ss << " "; }
+            ss << p.name;
+            if (p.variadic()) { ss << "..."; }
+            pos_idx++;
         }
     }
 
@@ -544,6 +719,24 @@ public:
         }
     }
 
+    template <typename... Args>
+    void add_positional(const Args ...h) {
+        _pos.emplace_back(h...);
+        _longest_flag = std::max(
+            _longest_flag,
+            _pos.back().left_col_width()
+        );
+    }
+
+    template <typename... Args>
+    void add_variadic_positional(const Args ...h) {
+        _pos.emplace_back(true, h...);
+        _longest_flag = std::max(
+            _longest_flag,
+            _pos.back().left_col_width()
+        );
+    }
+
     void clear_subcommands() {
         _subs.clear();
     }
@@ -560,36 +753,36 @@ public:
     void print(std::ostream& s) const {
         auto right_col_start =  _indent_width + _longest_flag + _indent_width;
 
-        // app leading line
-        if (_app_desc.name_len) {
-            s << _app_desc.name;
+        // app leading line and usage
+        if (_desc.name_len) {
+            // leading line
+            s << _desc.name;
             if (_app_version) {
                 s << " " << _app_version;
             }
-            if (_app_desc.short_len) {
-                s << " - " << _app_desc.short_desc;
+            if (_desc.short_len) {
+                s << " - " << _desc.short_desc;
+            }
+            s << std::endl << std::endl;
+
+            // usage
+            s << "usage: " << _desc.name;
+            if (has_args()) {
+                s << " ";
+                print_usage_args(s);
             }
             s << std::endl << std::endl;
         }
 
+        // long description
+        if (_desc.long_len) {
+            if (_desc.long_len) {
+                s << _desc.long_desc << std::endl;
+            }
 
-        // command leading line
-        if (_desc.name_len) {
-            s << _desc.name;
-            if (_desc.short_len) {
-                s << ": " << _desc.short_desc;
-            }
-            if (_desc.name_len or _desc.short_len) {
-                s << std::endl;
-            }
             s << std::endl;
         }
 
-
-        // long description
-        if (_desc.long_len) {
-            s << _desc.long_desc << std::endl << std::endl;
-        }
 
         // subcommands
         if (_subs.size()) {
@@ -611,7 +804,7 @@ public:
                 s << g.first.short_desc << std::endl;
                 for (auto& a : g.second) {
                     indent_stream(s, _indent_width);
-                    s << a.flags << " " << a.arg_name;
+                    s << a.flags_string() << " " << a.arg_name;
                     indent_stream(s, right_col_start - _indent_width - a.left_col_width());
                     s << a.desc << std::endl;
                 }
@@ -624,9 +817,24 @@ public:
             s << "options:" << std::endl;
             for (auto& a : _args) {
                 indent_stream(s, _indent_width);
-                s << a.flags << " " << a.arg_name;
+                s << a.flags_string() << " " << a.arg_name;
                 indent_stream(s, right_col_start - a.left_col_width());
                 s << a.desc << std::endl;
+            }
+            s << std::endl;
+        }
+
+        // positionals
+        if (_args.size()) {
+            s << "positionals:" << std::endl;
+            for (auto& p : _pos) {
+                indent_stream(s, _indent_width);
+                s << p.name;
+                if (p.variadic()) {
+                    s << "...";
+                }
+                indent_stream(s, right_col_start - p.left_col_width());
+                s << p.desc << std::endl;
             }
             s << std::endl;
         }
@@ -768,15 +976,16 @@ public:
         value_type operator*() const {
             return value{*_iter, _argv[*_iter], _desc[*_iter]};
         }
-        value_type operator->() const {
-            return *(*this);
-        }
         bool operator==(const self_type& rhs) {
             return (_iter == rhs._iter);
         }
         bool operator!=(const self_type& rhs) {
             return not (*this == rhs);
         }
+
+        const char* c_str() const { return _argv[*_iter]; }
+        ParseDesc& desc() const { return _desc[*_iter]; }
+        std::size_t index() const { return *_iter; }
     };
 
 public:
@@ -855,6 +1064,23 @@ protected:
 
     std::unique_ptr<HelpMap> _help;
 
+protected:
+
+    template <typename Into>
+    auto handle_positional(Into& into, const char* arg)
+    -> typename std::enable_if<
+        std::is_constructible<typename Into::value_type, const char*>::value,
+    void>::type
+    {
+        into.emplace_back(arg);
+    }
+    template <typename Into>
+    auto handle_positional(Into& into, const char* arg)
+    -> typename std::enable_if<std::is_constructible<Into, const char*>::value, void>::type
+    {
+        into = Into(arg);
+    }
+
 public:
     Parser() = default;
     Parser(
@@ -914,7 +1140,7 @@ public:
 
     Parser& details(const char* name, const char* desc, const char* long_desc="") {
         if (_ctx.wants_help()) {
-            _help->_app_desc = Description(name, desc, long_desc);
+            _help->_desc = Description(name, desc, long_desc);
         }
 
         return *this;
@@ -1029,7 +1255,10 @@ public:
 
     // TODO: take T&& to move value?
     template <typename T>
-    Parser& arg(char s, const char* l, const char* desc, T& into, const char* arg_desc=nullptr) {
+    Parser& arg(
+        char s, const char* l, const char* desc, T& into,
+         const char* arg_desc=nullptr, ArgReq req = ArgReq::Optional
+    ) {
         if (_level != _ctx.level()) {
             return *this;
         }
@@ -1081,15 +1310,26 @@ public:
             _ctx.used(arg.index);
             has_seen = true;
         }
+
+        if (not has_seen and req == ArgReq::Required) {
+            throw MissingArgumentError(s, l);
+        }
+
         return *this;
     }
     template <typename T>
-    Parser& arg(char s, const char* desc, T& into) {
-        return arg(s, nullptr, desc, into);
+    Parser& arg(
+        char s, const char* desc, T& into,
+        const char* arg_desc=nullptr, ArgReq req = ArgReq::Optional
+    ) {
+        return arg(s, nullptr, desc, into, arg_desc, req);
     }
     template <typename T>
-    Parser& arg(const char* l, const char* desc, T& into) {
-        return arg(0, l, desc, into);
+    Parser& arg(
+        const char* l, const char* desc, T& into,
+        const char* arg_desc=nullptr, ArgReq req = ArgReq::Optional
+    ) {
+        return arg(0, l, desc, into, arg_desc, req);
     }
 
 
@@ -1142,6 +1382,7 @@ public:
             // mark this arg as done regardless of the eq separator or not
             _ctx.used(arg.index);
         }
+
         return *this;
     }
     template <typename T>
@@ -1253,27 +1494,39 @@ public:
     //---------------------------------------------------------------------
 
     template <typename T>
-    Parser& positional(const char* name, const char* desc, T& into) {
+    Parser& positional(
+        const char* name, const char* desc, T& into,
+        ArgReq req = ArgReq::Optional
+    ) {
         if (_level != _ctx.level()) {
             return *this;
         }
 
         if (wants_help()) {
-            _help->add_arg(_in_group, std::string(name), "", desc);
+            _help->add_positional(name, desc);
             return *this;
         }
 
         // like subcommands, we  only operate on the first available arg
         // so we can just use the iterator and assert it is positional
-        auto arg = *_ctx.begin();
-        if (not arg.desc.is_positional()) {
+        auto arg = _ctx.begin();
+
+        if (arg == _ctx.end()) {
+            if (req == ArgReq::Required) {
+                throw MissingArgumentError(0, name);
+            }
+            // no arg here
+            return *this;
+        }
+
+        if (not arg.desc().is_positional()) {
             std::stringstream ss;
-            ss << "argument '" << arg.c_str << "' not available at this (sub)command";
+            ss << "argument '" << arg.c_str() << "' not available at this (sub)command";
             throw ParseError(ss.str());
         }
 
-        into = T(arg.c_str);
-        _ctx.used(arg.index);
+        handle_positional(into, arg.c_str());
+        _ctx.used(arg.index());
         return *this;
     }
 
@@ -1282,7 +1535,12 @@ public:
     // not all arguments were consumed.
     template <typename T>
     void all_positionals(const char* name, const char* desc, T& into) {
-        // becuase this is a finalizeer, we do not consider level
+        // becuase this is a finalizer, we do not consider level
+
+        if (wants_help()) {
+            _help->add_variadic_positional(name, desc);
+            return;
+        }
 
         for (auto& a : _ctx) {
             if (not a.desc.is_positional()) {

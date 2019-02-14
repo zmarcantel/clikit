@@ -8,6 +8,14 @@
 static const char* PROG_NAME = "simple";
 static const char* PROG_VERS = "v0.1.0";
 
+static const char* PROG_DESC_SHORT = "example tool that prints files";
+static const char* PROG_DESC_LONG = ""
+"Prints file to the terminal. Defaults to stdout but optionally stderr.\n"
+"Files are read an printed in blocks of configurable size.\n"
+"\n"
+"One file is required as an argument, but multiple may be provided."
+"";
+
 struct Options {
     bool out_err = false;
     std::uint8_t verbosity = 0;
@@ -19,12 +27,14 @@ struct Options {
 
 cli::Parser parse_args(int argc, const char** argv, Options& opts) {
     cli::Parser args(argc, argv);
-    args.details(PROG_NAME, "example tool that prints files")
+    args.details(PROG_NAME, PROG_DESC_SHORT, PROG_DESC_LONG)
         .version(PROG_VERS)
         .count('v', "verbose", "increase verbosity level", opts.verbosity)
-        .flag("err", "print to stderr rather than stdout", opts.out_err)
         .arg('b', "block-size", "block size to read/write with", opts.block_size, "BYTES")
-        .all_positionals("files", "list of files to print out", opts.inputs);
+        .flag("err", "print to stderr rather than stdout", opts.out_err)
+        // require one, accept many
+        .positional("file", "file to print out", opts.inputs, cli::ArgReq::Required)
+        .all_positionals("additional", "list of additional files to print out", opts.inputs);
     ;
 
     return args;
@@ -74,6 +84,9 @@ int main(int argc, const char** argv) {
         return 1;
     } catch (const cli::InternalError& err) {
         std::cerr << "INTERNAL ERROR: " << err.what() << std::endl;
+        return 1;
+    } catch (const cli::MissingArgumentError& err) {
+        std::cerr << err.what() << std::endl;
         return 1;
     }
 
