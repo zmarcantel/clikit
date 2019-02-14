@@ -1062,6 +1062,7 @@ protected:
     bool _in_group;
     std::size_t _level;
 
+    bool _help_shortcircuit = true;
     std::unique_ptr<HelpMap> _help;
 
 protected:
@@ -1090,6 +1091,7 @@ public:
         : _ctx(argc-1, argv+1, help_short, help_long)
         , _in_group(false)
         , _level(0)
+        , _help_shortcircuit(true)
     {
         if (_ctx.wants_help()) {
             _help = std::unique_ptr<HelpMap>(new HelpMap());
@@ -1125,6 +1127,11 @@ public:
 
     // finalizer that asserts no unused arguments
     void validate() {
+        // if we are just printing help, don't validate
+        if (_ctx.wants_help()) {
+            return;
+        }
+
         if (_ctx.remaining()) {
             auto arg = *_ctx.begin();
             std::stringstream ss;
@@ -1161,6 +1168,11 @@ public:
         return *this;
     }
 
+    Parser& disable_help_shortcircuit() {
+        _help_shortcircuit = false;
+        return *this;
+    }
+
     //---------------------------------------------------------------------
     // flag
     //---------------------------------------------------------------------
@@ -1173,7 +1185,9 @@ public:
 
         if (wants_help()) {
             _help->add_arg(_in_group, s, l, "", desc);
-            return *this;
+            if (_help_shortcircuit) {
+                return *this;
+            }
         }
 
         bool has_seen = false;
@@ -1217,7 +1231,9 @@ public:
 
         if (wants_help()) {
             _help->add_arg(_in_group, s, l, "", desc);
-            return *this;
+            if (_help_shortcircuit) {
+                return *this;
+            }
         }
 
         for (auto& arg : _ctx) {
@@ -1265,7 +1281,9 @@ public:
 
         if (wants_help()) {
             _help->add_arg(_in_group, s, l, arg_desc, desc);
-            return *this;
+            if (_help_shortcircuit) {
+                return *this;
+            }
         }
 
         bool has_seen = false;
@@ -1311,7 +1329,7 @@ public:
             has_seen = true;
         }
 
-        if (not has_seen and req == ArgReq::Required) {
+        if (not has_seen and (req == ArgReq::Required) and not wants_help()) {
             throw MissingArgumentError(s, l);
         }
 
@@ -1346,7 +1364,9 @@ public:
 
         if (wants_help()) {
             _help->add_arg(_in_group, s, l, arg_desc, desc);
-            return *this;
+            if (_help_shortcircuit) {
+                return *this;
+            }
         }
 
         for (auto& arg : _ctx) {
@@ -1413,7 +1433,9 @@ public:
         // if we're same level but there are no args, add ourself and return
         if (wants_help() and not _ctx.remaining()) {
             _help->add_subcommand(name, desc);
-            return *this;
+            if (_help_shortcircuit) {
+                return *this;
+            }
         }
 
         auto arg_len = strlen(name);
@@ -1476,7 +1498,9 @@ public:
     Parser& group(const char* name, const char* desc) {
         // groups do nothing when not printing help
         if (not _ctx.wants_help()) {
-            return *this;
+            if (_help_shortcircuit) {
+                return *this;
+            }
         }
 
         if (_in_group) {
@@ -1504,7 +1528,9 @@ public:
 
         if (wants_help()) {
             _help->add_positional(name, desc);
-            return *this;
+            if (_help_shortcircuit) {
+                return *this;
+            }
         }
 
         // like subcommands, we  only operate on the first available arg
@@ -1512,7 +1538,7 @@ public:
         auto arg = _ctx.begin();
 
         if (arg == _ctx.end()) {
-            if (req == ArgReq::Required) {
+            if (req == ArgReq::Required and not wants_help()) {
                 throw MissingArgumentError(0, name);
             }
             // no arg here
@@ -1539,7 +1565,9 @@ public:
 
         if (wants_help()) {
             _help->add_variadic_positional(name, desc);
-            return;
+            if (_help_shortcircuit) {
+                return;
+            }
         }
 
         for (auto& a : _ctx) {
