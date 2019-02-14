@@ -9,23 +9,29 @@ import subprocess
 
 def make_ycm_db(proj_root):
     subprocess.check_call([
-        os.path.join(proj_root, "tools", "compiledb.sh")
+        os.path.join(proj_root, "external", "tools", "compiledb.sh")
     ])
 
-def get_db_flags(proj_root, rel_fname):
-    ycm_db = os.path.join(proj_root, ".ycm_db")
+def get_db_flags(proj_root, rel_fname, final=False):
+    ycm_db = os.path.join(proj_root, "compile_commands.json")
 
     # if no db file, make one
     if not os.path.isfile(ycm_db):
         make_ycm_db(proj_root)
 
     with open(ycm_db, 'r') as db:
-        flist = json.load(db)
-        if rel_fname in flist: # existing file
-            return flist[rel_fname]
-        else: # newly analyzed file
-            make_ycm_db(proj_root)
-            return get_db_flags(proj_root, rel_fname) # recurse and return from new db
+        cmdlist = json.load(db)
+
+        for desc in cmdlist:
+            if desc['file'] == rel_fname:
+                return desc['command'].split(" ")
+
+    if final:
+        raise Exception("could not find file flags even after regenerating")
+
+    # newly analyzed file so rescan and recurse
+    make_ycm_db(proj_root)
+    return get_db_flags(proj_root, rel_fname, final=True)
 
 def FlagsForFile( filename ):
     proj_root = os.path.abspath(os.path.dirname(__file__))

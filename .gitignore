@@ -1,6 +1,5 @@
 bazel-*
 
-.ycm_db
 .ycm_extra_conf.pyc
 compile_commands.json
-tools/ycm/.bazel_ycm
+external/tools/ycm/.bazel_ycm
