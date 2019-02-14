@@ -75,6 +75,7 @@ int main(int argc, const char** argv) {
     Options opts;
     try {
         auto args = parse_args(argc, argv, opts);
+        args.validate(); // assert we used all the arguments
         if (args.wants_help()) {
             args.print();
             return 0;
