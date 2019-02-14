@@ -1140,6 +1140,16 @@ public:
         }
     }
 
+    // finalizer that returns all unused args
+    std::vector<const char*> gather_remaining() {
+        std::vector<const char*> unused;
+        for (auto& a : _ctx) {
+            unused.emplace_back(a.c_str);
+        }
+
+        return unused;
+    }
+
 
     //---------------------------------------------------------------------
     // help setup
