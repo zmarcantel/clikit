@@ -434,13 +434,13 @@ enum class ArgReq : std::uint8_t {
 //-------------------------------------------------------------------------
 
 struct Description {
-    const char* name = nullptr;
+    const char* name = "";
     std::size_t name_len = 0;
 
-    const char* short_desc = nullptr;
+    const char* short_desc = "";
     std::size_t short_len = 0;
 
-    const char* long_desc = nullptr;
+    const char* long_desc = "";
     std::size_t long_len = 0;
 
     Description() = default; // TODO: maybe not
@@ -483,8 +483,8 @@ struct ArgHelp {
 
     ArgHelp(
         char s, const char* l,
-        const char* name=nullptr,
-        const char* desc=nullptr
+        const char* name="",
+        const char* desc=""
     )
         : short_flag(s)
         , long_flag(l)
@@ -518,7 +518,7 @@ struct PositionalHelp {
     std::size_t desc_len = 0;
     bool _is_variadic = false;
 
-    PositionalHelp(const char* name, const char* desc=nullptr)
+    PositionalHelp(const char* name, const char* desc="")
         : name(name)
         , desc(desc)
         , _is_variadic(false)
@@ -528,7 +528,7 @@ struct PositionalHelp {
         if (desc != nullptr) { desc_len = strlen(desc); } else { desc = ""; }
     }
 
-    PositionalHelp(bool variadic, const char* name, const char* desc=nullptr)
+    PositionalHelp(bool variadic, const char* name, const char* desc="")
         : PositionalHelp(name, desc)
     {
         _is_variadic = variadic;
@@ -1197,7 +1197,7 @@ public:
         return *this;
     }
     Parser& flag(char s, const char* desc, bool& into, bool invert=false) {
-        return flag(s, nullptr, desc, into, invert);
+        return flag(s, "", desc, into, invert);
     }
     Parser& flag(const char* l, const char* desc, bool& into, bool invert=false) {
         return flag(0, l, desc, into, invert);
@@ -1241,7 +1241,7 @@ public:
     }
     template <typename T>
     Parser& count(char s, const char* desc, T& into) {
-        return count(s, nullptr, desc, into);
+        return count(s, "", desc, into);
     }
     template <typename T>
     Parser& count(const char* l, const char* desc, T& into) {
@@ -1257,7 +1257,7 @@ public:
     template <typename T>
     Parser& arg(
         char s, const char* l, const char* desc, T& into,
-         const char* arg_desc=nullptr, ArgReq req = ArgReq::Optional
+         const char* arg_desc="", ArgReq req = ArgReq::Optional
     ) {
         if (_level != _ctx.level()) {
             return *this;
@@ -1320,14 +1320,14 @@ public:
     template <typename T>
     Parser& arg(
         char s, const char* desc, T& into,
-        const char* arg_desc=nullptr, ArgReq req = ArgReq::Optional
+        const char* arg_desc="", ArgReq req = ArgReq::Optional
     ) {
-        return arg(s, nullptr, desc, into, arg_desc, req);
+        return arg(s, "", desc, into, arg_desc, req);
     }
     template <typename T>
     Parser& arg(
         const char* l, const char* desc, T& into,
-        const char* arg_desc=nullptr, ArgReq req = ArgReq::Optional
+        const char* arg_desc="", ArgReq req = ArgReq::Optional
     ) {
         return arg(0, l, desc, into, arg_desc, req);
     }
@@ -1339,7 +1339,7 @@ public:
 
     // TODO: take T&& to move value?
     template <typename T>
-    Parser& list(char s, const char* l, const char* desc, T& into, const char* arg_desc=nullptr) {
+    Parser& list(char s, const char* l, const char* desc, T& into, const char* arg_desc="") {
         if (_level != _ctx.level()) {
             return *this;
         }
