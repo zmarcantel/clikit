@@ -808,6 +808,7 @@ public:
                     indent_stream(s, right_col_start - _indent_width - a.left_col_width());
                     s << a.desc << std::endl;
                 }
+                s << std::endl;
             }
             s << std::endl;
         }
@@ -818,7 +819,7 @@ public:
             for (auto& a : _args) {
                 indent_stream(s, _indent_width);
                 s << a.flags_string() << " " << a.arg_name;
-                indent_stream(s, right_col_start - a.left_col_width());
+                indent_stream(s, right_col_start - _indent_width -  a.left_col_width());
                 s << a.desc << std::endl;
             }
             s << std::endl;
