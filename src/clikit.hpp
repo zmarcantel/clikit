@@ -1506,20 +1506,15 @@ public:
     // group
     //---------------------------------------------------------------------
 
-    Parser& group(const char* name, const char* desc) {
-        // groups do nothing when not printing help
-        if (not _ctx.wants_help()) {
-            if (_help_shortcircuit) {
-                return *this;
-            }
-        }
-
+    Parser& group(const char* name, const char* desc="") {
         if (_in_group) {
             throw InternalError("nested groups are not allowed");
         }
 
         _in_group = true;
-        _help->new_group(name, desc);
+        if (wants_help()) {
+            _help->new_group(name, desc);
+        }
         return *this;
     }
 
