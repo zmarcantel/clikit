@@ -1,10 +1,8 @@
 cc_library(
     name = "clikit",
-    hdrs = [
-        "clikit.hpp",
-    ],
+    srcs = ["clikit.cpp"],
+    hdrs = ["clikit.hpp"],
     includes = ["."],
-    deps = [
-    ],
+    deps = [],
     visibility = ["//visibility:public"],
 )
