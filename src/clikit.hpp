@@ -1146,7 +1146,9 @@ public:
     Parser& subcommand(const char* name, const char* desc, bool& into) {
         const char* test = nullptr;
         this->subcommand(name, desc, test);
-        into = (test != nullptr);
+        if (test != nullptr) {
+            into = true;
+        }
         return *this;
     }
 
