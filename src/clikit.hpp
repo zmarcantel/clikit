@@ -598,6 +598,7 @@ protected:
     const char** _argv;
 
     std::size_t _level;
+    bool _chain_ended;
     bool _help;
 
 public:
@@ -669,6 +670,7 @@ public:
         , _argc(argc)
         , _argv(argv)
         , _level(0)
+        , _chain_ended(false)
         , _help(false)
     {
         _argdesc.reserve(argc);
@@ -721,6 +723,20 @@ public:
     }
     std::size_t level() const {
         return _level;
+    }
+    void end_level() {
+        if ((_level > 0) and (not _chain_ended)) {
+            _chain_ended = true;
+        }
+    }
+    bool should_continue(std::size_t curr_level, bool is_subcommand = false) const {
+        if (_chain_ended) { return false; }
+
+        if (is_subcommand) {
+            return curr_level == (_level + 1);
+        }
+
+        return curr_level == _level;
     }
 
     bool wants_help() const {
@@ -823,7 +839,7 @@ public:
 
     // TODO: take T&& to move value?
     Parser& flag(char s, const char* l, const char* desc, bool& into, bool invert=false) {
-        if (_level != _ctx.level()) {
+        if (not _ctx.should_continue(_level)) {
             return *this;
         }
 
@@ -869,7 +885,7 @@ public:
     // TODO: take T&& to move value?
     template <typename T>
     Parser& count(char s, const char* l, const char* desc, T& into) {
-        if (_level != _ctx.level()) {
+        if (not _ctx.should_continue(_level)) {
             return *this;
         }
 
@@ -919,7 +935,7 @@ public:
         char s, const char* l, const char* desc, T& into,
          const char* arg_desc="", ArgReq req = ArgReq::Optional
     ) {
-        if (_level != _ctx.level()) {
+        if (not _ctx.should_continue(_level)) {
             return *this;
         }
 
@@ -1002,7 +1018,7 @@ public:
     // TODO: take T&& to move value?
     template <typename T>
     Parser& list(char s, const char* l, const char* desc, T& into, const char* arg_desc="") {
-        if (_level != _ctx.level()) {
+        if (not _ctx.should_continue(_level)) {
             return *this;
         }
 
@@ -1069,9 +1085,8 @@ public:
         // if we are entering this block, everything until the done() call
         // is in the next level. so incr and wait for decr
         _level++;
-        std::cout << "moving to level=" << _level << " for '" << name << " -- " << desc << "'\n";
 
-        if (_level != (_ctx.level() + 1)) {
+        if (not _ctx.should_continue(_level, true)) {
             return *this;
         }
 
@@ -1081,7 +1096,10 @@ public:
         // so we can just use the iterator
         auto arg = _ctx.begin();
         if (arg == _ctx.end()) {
-            // TODO: add help args here too?
+            // we asked for help, but have no positional, so we should add ourself to the help
+            if (wants_help()) {
+                _help->add_subcommand(name, desc);
+            }
             return *this;
         }
         if (not arg.desc().is_positional()) {
@@ -1092,8 +1110,6 @@ public:
 
         // ... this is not the subcommand you're looking for
         if ((arg.desc().len != arg_len) or (strncmp(name, arg.c_str(), arg_len) != 0)) {
-            std::cout << "subcommand mismatch: len=" << arg_len << "(" << arg.desc().len << "), string="
-                      << arg.c_str() << "(" << name << ")\n";
             if (wants_help()) {
                 // if we dont change levels and have help arg, add ourselves as a subcommand
                 _help->add_subcommand(name, desc);
@@ -1101,12 +1117,9 @@ public:
             return *this;
         }
 
-        std::cout << "subcommand match: len=" << arg_len << "(" << arg.desc().len << "), string="
-                  << arg.c_str() << "(" << name << ") -- entering ctx.level=" << (_ctx.level()+1) << "\n";
         into = T(arg.c_str());
         _ctx.used(arg.index());
         _ctx.next_level();
-        std::cout << "moving contexte to level=" << _ctx.level() << " for '" << name << " -- " << desc << "'\n";
 
         if (wants_help()) {
             // set this subcommand to be used in the details and usage lines
@@ -1164,13 +1177,11 @@ public:
         const char* name, const char* desc, T& into,
         ArgReq req = ArgReq::Optional
     ) {
-        if (_level != _ctx.level()) {
+        if (not _ctx.should_continue(_level)) {
             return *this;
         }
 
         if (wants_help()) {
-            std::cout << "adding positional '" << name << " -- " << desc << "'"
-                      << " with level="<<_level << ", ctx_level=" << _ctx.level() << std::endl;
             _help->add_positional(name, desc);
             if (_help_shortcircuit) {
                 return *this;

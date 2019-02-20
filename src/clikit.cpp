@@ -455,7 +455,7 @@ bool ParseDesc::matches(const char* arg, const char* l) const {
 
 
 Parser& Parser::done() {
-    // handle groups first
+    // handle groups first -- does not add a level though so skip that
     if (_in_group) {
         _in_group = false;
         return *this;
@@ -463,7 +463,7 @@ Parser& Parser::done() {
 
     if (_level > 0) {
         _level--;
-        std::cout << "going back to level=" << _level << std::endl;
+        _ctx.end_level();
     }
     return *this;
 }
