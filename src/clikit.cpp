@@ -463,8 +463,12 @@ Parser& Parser::done() {
 
     if (_level > 0) {
         _level--;
-        _ctx.end_level();
     }
+
+    if (_level == (_ctx.level() - 1)) {
+        _ctx.end_chain();
+    }
+
     return *this;
 }
 

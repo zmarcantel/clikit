@@ -724,13 +724,13 @@ public:
     std::size_t level() const {
         return _level;
     }
-    void end_level() {
-        if ((_level > 0) and (not _chain_ended)) {
-            _chain_ended = true;
-        }
+    void end_chain() {
+        _chain_ended = true;
     }
     bool should_continue(std::size_t curr_level, bool is_subcommand = false) const {
-        if (_chain_ended) { return false; }
+        if (_chain_ended) {
+            return false;
+        }
 
         if (is_subcommand) {
             return curr_level == (_level + 1);
