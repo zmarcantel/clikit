@@ -276,8 +276,17 @@ void HelpMap::print_usage_args(std::ostream& ss) const {
     std::size_t pos_idx = 0;
     for (auto& p : _pos) {
         if (pos_idx) { ss << " "; }
+
+        if (not p.required()) {
+            ss << "[";
+        }
+
         ss << p.name;
         if (p.variadic()) { ss << "..."; }
+
+        if (not p.required()) {
+            ss << "]";
+        }
         pos_idx++;
     }
 }
@@ -407,6 +416,9 @@ void HelpMap::print(std::ostream& s) const {
                 s << "...";
             }
             indent_stream(s, right_col_start - _indent_width - p.left_col_width());
+            if (not p.required()) {
+                s << "[optional] ";
+            }
             s << p.desc << std::endl;
         }
         s << std::endl;
@@ -492,9 +504,11 @@ void Parser::validate() {
     }
 
     if (_ctx.remaining()) {
-        auto arg = *_ctx.begin();
         std::stringstream ss;
-        ss << "unknown argument '" << arg.c_str << "'";
+        ss << "unknown/unused argument(s):";
+        for (auto& a : _ctx) {
+            ss << " " << a.c_str;
+        }
         throw ParseError(ss.str());
     }
 }

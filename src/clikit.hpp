@@ -36,7 +36,11 @@ protected:
     std::size_t bit_index(std::size_t linear) const;
 
 public:
-    BitSet() = delete;
+    BitSet() = default;
+    BitSet(const BitSet&) = delete; // no copy
+    BitSet& operator=(const BitSet&) = delete; // no copy
+    BitSet(BitSet&&) = default; // default move
+    BitSet& operator=(BitSet&&) = default; // default move
     BitSet(std::size_t n)
         : N(n)
         , data(num_elements())
@@ -397,21 +401,24 @@ struct PositionalHelp {
     const char* desc;
     std::size_t desc_len = 0;
     bool _is_variadic = false;
+    bool _required = false;
 
     PositionalHelp(const char* name, const char* desc="")
         : name(name)
         , desc(desc)
         , _is_variadic(false)
+        , _required(false)
     {
         // TODO: strnlen -- but need a max length variable of some sort
         if (name != nullptr) { name_len = strlen(name); } else { name = ""; }
         if (desc != nullptr) { desc_len = strlen(desc); } else { desc = ""; }
     }
 
-    PositionalHelp(bool variadic, const char* name, const char* desc="")
+    PositionalHelp(bool variadic, ArgReq required, const char* name, const char* desc="")
         : PositionalHelp(name, desc)
     {
         _is_variadic = variadic;
+        _required = required == ArgReq::Required;
     }
 
     std::size_t left_col_width() const {
@@ -419,6 +426,7 @@ struct PositionalHelp {
     }
 
     bool variadic() const { return _is_variadic; }
+    bool required() const { return _required; }
 };
 
 class HelpMap {
@@ -664,7 +672,12 @@ public:
     };
 
 public:
-    Context() = delete;
+    Context() = default;
+    Context(const Context&) = delete; // no copy
+    Context& operator=(const Context&) = delete; // no copy
+    Context(Context&&) = default; // default move
+    Context& operator=(Context&&) = default; // default move
+
     Context(std::size_t argc, const char** argv, char help_short='h', const char* help_long="help")
         : _argset(argc)
         , _argc(argc)
@@ -774,6 +787,11 @@ protected:
 
 public:
     Parser() = default;
+    Parser(const Parser&) = delete; // no copy
+    Parser& operator=(const Parser&) = delete; // no copy
+    Parser(Parser&&) = default; // default move
+    Parser& operator=(Parser&&) = default; // default move
+
     Parser(
         std::size_t argc, const char** argv,
         char help_short='h', const char* help_long="help"
@@ -1184,15 +1202,17 @@ public:
         }
 
         if (wants_help()) {
-            _help->add_positional(name, desc);
+            _help->add_positional(false, req, name, desc);
             if (_help_shortcircuit) {
                 return *this;
             }
         }
 
-        // like subcommands, we  only operate on the first available arg
-        // so we can just use the iterator and assert it is positional
+        // looks for the first positional argument and handles it
+        // this used to only operate on the first argument, but there are situations
+        // where this may not match valid usage patterns
         auto arg = _ctx.begin();
+        for (; arg != _ctx.end() and not arg.desc().is_positional(); arg++) {}
 
         if (arg == _ctx.end()) {
             if (req == ArgReq::Required and not wants_help()) {
